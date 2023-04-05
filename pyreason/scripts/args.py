@@ -56,6 +56,11 @@ def argparser():
     parser.add_argument("--non-static_graph_facts", dest='static_graph_facts', action='store_false', help='Option to keep facts from graphml non-static, for t=0 only. Default is static')
     parser.add_argument("--static_graph_facts", dest='static_graph_facts', action='store_true',help='Option to to keep facts from graphml static, for entire program. Default is static')
     parser.set_defaults(static_graph_facts=True)
+    # Ad hoc grounding
+    parser.add_argument("--ad_hoc_grounding", dest='ad_hoc_grounding', action='store_true',help='Option to ground atoms as and when we need them. This can be used for specific cases. Default is off')
+    parser.set_defaults(ad_hoc_grounding=False)
+    parser.add_argument("--resolution_levels", type=int, default=0, help='The resolution number of levels used in ad-hoc grounding')
+    parser.add_argument("--step_size", type=int, default=1, help='The step size for ad-hoc grounding. Default is 1')
     
     # Pickling options
 
