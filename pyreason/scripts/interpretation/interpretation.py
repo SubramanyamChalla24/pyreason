@@ -347,33 +347,33 @@ class Interpretation:
 											bound_delta = max(bound_delta, changes)
 										else:
 											changes_cnt += changes
-							# Ad-hoc-grounding (very specific version, make more general later)
-							if ad_hoc_grounding:
-								# Up/Down/Left/Right Locations of target node. Target node should be 
-								target_node = e[1]
-								up_node = _search(target_node, 'u', step_size)
-								down_node = _search(target_node, 'd', step_size)
-								left_node = _search(target_node, 'l', step_size)
-								right_node = _search(target_node, 'r', step_size)
-								neigh_nodes = numba.typed.List([up_node, down_node, left_node, right_node])
-								directions = numba.typed.List([label.Label('up'), label.Label('down'), label.Label('left'), label.Label('right')])
+								# Ad-hoc-grounding (very specific version, make more general later)
+								if ad_hoc_grounding:
+									# Up/Down/Left/Right Locations of target node. Target node should be 
+									target_node = e[1]
+									up_node = _search(target_node, 'u', step_size)
+									down_node = _search(target_node, 'd', step_size)
+									left_node = _search(target_node, 'l', step_size)
+									right_node = _search(target_node, 'r', step_size)
+									neigh_nodes = numba.typed.List([up_node, down_node, left_node, right_node])
+									directions = numba.typed.List([label.Label('up'), label.Label('down'), label.Label('left'), label.Label('right')])
 
-								# Ideally labels should be defined here but there is an issue with constructing a label indide a jitted function
-								# Add edges to new nodes and set 
-								for d, n in zip(directions, neigh_nodes):
-									if n!='invalid':
-										edge, changes = _add_edge(target_node, n, neighbors, nodes, edges, d, interpretations_node, interpretations_edge, ad_hoc_quadrant_labels)
+									# Ideally labels should be defined here but there is an issue with constructing a label indide a jitted function
+									# Add edges to new nodes and set 
+									for d, n in zip(directions, neigh_nodes):
+										if n!='invalid':
+											edge, changes = _add_edge(target_node, n, neighbors, nodes, edges, d, interpretations_node, interpretations_edge, ad_hoc_quadrant_labels)
 
-										# Set the correct bounds for the labels of newly added edges (change to update_edge later?)
-										for l, pos in zip(ad_hoc_quadrant_labels, n):
-											interpretations_node[n].world[l].set_lower_upper(str_to_int(pos)/10, 1)
+											# Set the correct bounds for the labels of newly added edges (change to update_edge later?)
+											for l, pos in zip(ad_hoc_quadrant_labels, n):
+												interpretations_node[n].world[l].set_lower_upper(str_to_int(pos)/10, 1)
 
-										# Set blocked to false if it is not in node attributes
-										if label.Label('blocked') not in interpretations_node[n].world:
-											interpretations_node[n].world[label.Label('blocked')] = interval.closed(0,0)
-										
-										# Set up/down/left/right edge bound to [1,1]
-										interpretations_edge[edge].world[d].set_lower_upper(1,1)
+											# Set blocked to false if it is not in node attributes
+											if label.Label('blocked') not in interpretations_node[n].world:
+												interpretations_node[n].world[label.Label('blocked')] = interval.closed(0,0)
+											
+											# Set up/down/left/right edge bound to [1,1]
+											interpretations_edge[edge].world[d].set_lower_upper(1,1)
 
 						else:
 							# Check for inconsistencies
