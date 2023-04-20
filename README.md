@@ -11,7 +11,9 @@ Paper: https://arxiv.org/abs/2302.13482
 
 Video: https://www.youtube.com/watch?v=E1PSl3KQCmo
 
-Website: https://neurosymoblic.asu.edu/pyreason/
+Website: https://neurosymbolic.asu.edu/pyreason/
+
+PyReason Gym: https://github.com/lab-v2/pyreason-gym
 
 Check out the [PyReason Hello World](https://github.com/lab-v2/pyreason/blob/main/docs/hello-world.md) program if you're new, or want get get a feel for the software.
 
@@ -43,9 +45,11 @@ The format of these files is very important. Please refer to the [example YAML f
 PyReason can be installed as a python library (recommended) or as a command line tool
 
 ## 2.1 Install as a Python Library
-This might take a minute or two
+We import pyreason to initialize it for the first time, this may take a few minutes
 ```bash
 pip install pyreason
+python
+import pyreason
 ```
 
 ## 2.2 Install as a Command Line Tool

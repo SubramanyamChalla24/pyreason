@@ -22,8 +22,7 @@ class Interpretation:
 	specific_node_labels = numba.typed.Dict.empty(key_type=label.label_type, value_type=numba.types.ListType(node_type))
 	specific_edge_labels = numba.typed.Dict.empty(key_type=label.label_type, value_type=numba.types.ListType(edge_type))
 
-	def __init__(self, graph, tmax, ipl, reverse_graph, atom_trace, save_graph_attributes_to_rule_trace, canonical, inconsistency_check, ad_hoc_grounding, resolution_levels, step_size, convergence_threshold, convergence_bound_threshold):
-		self.tmax = tmax
+	def __init__(self, graph, ipl, reverse_graph, atom_trace, save_graph_attributes_to_rule_trace, canonical, inconsistency_check, ad_hoc_grounding, resolution_levels, step_size, convergence_threshold, convergence_bound_threshold):
 		self.graph = graph
 		self.ipl = ipl
 		self.reverse_graph = reverse_graph
@@ -35,17 +34,6 @@ class Interpretation:
 		self.resolution_levels = resolution_levels
 		self.step_size = step_size
 		self.time = 0
-
-		# Set up convergence criteria
-		if convergence_bound_threshold==-1 and convergence_threshold==-1:
-			self._convergence_mode = 'perfect_convergence'
-			self._convergence_delta = 0
-		elif convergence_bound_threshold==-1:
-			self._convergence_mode = 'delta_interpretation'
-			self._convergence_delta = convergence_threshold
-		else:
-			self._convergence_mode = 'delta_bound'
-			self._convergence_delta = convergence_bound_threshold
 
 		# Initialize list of tuples for rules/facts to be applied, along with all the ground atoms that fired the rule. One to One correspondence between rules_to_be_applied_node and rules_to_be_applied_node_trace if atom_trace is true
 		self.rules_to_be_applied_node_trace = numba.typed.List.empty_list(numba.types.Tuple((numba.types.ListType(numba.types.ListType(node_type)), numba.types.ListType(numba.types.ListType(edge_type)), numba.types.string)))
@@ -64,6 +52,10 @@ class Interpretation:
 		self.rule_trace_edge_atoms = numba.typed.List.empty_list(numba.types.Tuple((numba.types.ListType(numba.types.ListType(node_type)), numba.types.ListType(numba.types.ListType(edge_type)), interval.interval_type, numba.types.string)))
 		self.rule_trace_node = numba.typed.List.empty_list(numba.types.Tuple((numba.types.int8, numba.types.int8, node_type, label.label_type, interval.interval_type)))
 		self.rule_trace_edge = numba.typed.List.empty_list(numba.types.Tuple((numba.types.int8, numba.types.int8, edge_type, label.label_type, interval.interval_type)))
+
+		# Nodes and edges of the graph
+		self.nodes = numba.typed.List(self.graph.nodes())
+		self.edges = numba.typed.List(self.graph.edges())
 
 		# Make sure they are correct type
 		if len(self.available_labels_node)==0:
@@ -122,7 +114,24 @@ class Interpretation:
 
 		return interpretations
 
-	def start_fp(self, facts_node, facts_edge, rules, verbose):
+	@staticmethod
+	@numba.njit(cache=True)
+	def _init_convergence(convergence_bound_threshold, convergence_threshold):
+		if convergence_bound_threshold==-1 and convergence_threshold==-1:
+			convergence_mode = 'perfect_convergence'
+			convergence_delta = 0
+		elif convergence_bound_threshold==-1:
+			convergence_mode = 'delta_interpretation'
+			convergence_delta = convergence_threshold
+		else:
+			convergence_mode = 'delta_bound'
+			convergence_delta = convergence_bound_threshold
+		return convergence_mode, convergence_delta
+
+
+	def start_fp(self, tmax, facts_node, facts_edge, rules, verbose, convergence_threshold, convergence_bound_threshold):
+		self.tmax = tmax
+		self._convergence_mode, self._convergence_delta = self._init_convergence(convergence_bound_threshold, convergence_threshold)
 		max_facts_time = self._init_facts(facts_node, facts_edge, self.facts_to_be_applied_node, self.facts_to_be_applied_edge, self.facts_to_be_applied_node_trace, self.facts_to_be_applied_edge_trace, self.atom_trace)
 		self._start_fp(rules, max_facts_time, verbose)
 
@@ -151,7 +160,7 @@ class Interpretation:
 
 		
 	def _start_fp(self, rules, max_facts_time, verbose):
-		fp_cnt, t = self.reason(self.interpretations_node, self.interpretations_edge, self.tmax, rules, numba.typed.List(self.graph.nodes()), numba.typed.List(self.graph.edges()), self.neighbors, self.rules_to_be_applied_node, self.rules_to_be_applied_edge, self.edges_to_be_added_node_rule, self.edges_to_be_added_edge_rule, self.rules_to_be_applied_node_trace, self.rules_to_be_applied_edge_trace, self.facts_to_be_applied_node, self.facts_to_be_applied_edge, self.facts_to_be_applied_node_trace, self.facts_to_be_applied_edge_trace, self.available_labels_node, self.available_labels_edge, self.specific_node_labels, self.specific_edge_labels, self.ipl, self.rule_trace_node, self.rule_trace_edge, self.rule_trace_node_atoms, self.rule_trace_edge_atoms, self.reverse_graph, self.atom_trace, self.save_graph_attributes_to_rule_trace, self.canonical, self.inconsistency_check, self.ad_hoc_grounding, self.resolution_levels, self.step_size, self.ad_hoc_quadrant_labels, max_facts_time, self._convergence_mode, self._convergence_delta, verbose)
+		fp_cnt, t = self.reason(self.interpretations_node, self.interpretations_edge, self.tmax, rules, self.nodes, self.edges, self.neighbors, self.rules_to_be_applied_node, self.rules_to_be_applied_edge, self.edges_to_be_added_node_rule, self.edges_to_be_added_edge_rule, self.rules_to_be_applied_node_trace, self.rules_to_be_applied_edge_trace, self.facts_to_be_applied_node, self.facts_to_be_applied_edge, self.facts_to_be_applied_node_trace, self.facts_to_be_applied_edge_trace, self.available_labels_node, self.available_labels_edge, self.specific_node_labels, self.specific_edge_labels, self.ipl, self.rule_trace_node, self.rule_trace_edge, self.rule_trace_node_atoms, self.rule_trace_edge_atoms, self.reverse_graph, self.atom_trace, self.save_graph_attributes_to_rule_trace, self.canonical, self.inconsistency_check, self.ad_hoc_grounding, self.resolution_levels, self.step_size, self.ad_hoc_quadrant_labels, max_facts_time, self._convergence_mode, self._convergence_delta, verbose)
 		self.time = t
 		if verbose:
 			print('Fixed Point iterations:', fp_cnt)
@@ -349,7 +358,7 @@ class Interpretation:
 											changes_cnt += changes
 								# Ad-hoc-grounding (very specific version, make more general later)
 								if ad_hoc_grounding:
-									# Up/Down/Left/Right Locations of target node. Target node should be 
+									# Up/Down/Left/Right Locations of target node. Target node should be
 									target_node = e[1]
 									up_node = _search(target_node, 'u', step_size)
 									down_node = _search(target_node, 'd', step_size)
@@ -359,7 +368,7 @@ class Interpretation:
 									directions = numba.typed.List([label.Label('up'), label.Label('down'), label.Label('left'), label.Label('right')])
 
 									# Ideally labels should be defined here but there is an issue with constructing a label indide a jitted function
-									# Add edges to new nodes and set 
+									# Add edges to new nodes and set
 									for d, n in zip(directions, neigh_nodes):
 										if n!='invalid':
 											edge, changes = _add_edge(target_node, n, neighbors, nodes, edges, d, interpretations_node, interpretations_edge, ad_hoc_quadrant_labels)
@@ -371,7 +380,7 @@ class Interpretation:
 											# Set blocked to false if it is not in node attributes
 											if label.Label('blocked') not in interpretations_node[n].world:
 												interpretations_node[n].world[label.Label('blocked')] = interval.closed(0,0)
-											
+
 											# Set up/down/left/right edge bound to [1,1]
 											interpretations_edge[edge].world[d].set_lower_upper(1,1)
 

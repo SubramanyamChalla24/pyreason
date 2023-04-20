@@ -4,11 +4,12 @@ import time
 import sys
 import warnings
 import memory_profiler as mp
-from typing import List
+from typing import List, Type
 
 from pyreason.scripts.utils.output import Output
 from pyreason.scripts.utils.filter import Filter
 from pyreason.scripts.program.program import Program
+from pyreason.scripts.interpretation.interpretation import Interpretation
 from pyreason.scripts.utils.graphml_parser import GraphmlParser
 import pyreason.scripts.utils.yaml_parser as yaml_parser
 import pyreason.scripts.numba_wrapper.numba_types.label_type as label
@@ -39,7 +40,7 @@ class _Settings:
 
     @property
     def verbose(self) -> bool:
-        """Returns whether verbose mode is on or not
+        """Returns whether verbose mode is on or not. Default is True
 
         :return: bool
         """
@@ -47,7 +48,7 @@ class _Settings:
     
     @property
     def output_to_file(self) -> bool:
-        """Returns whether output is going to be printed to file or not
+        """Returns whether output is going to be printed to file or not. Default is False
 
         :return: bool
         """
@@ -55,7 +56,7 @@ class _Settings:
 
     @property
     def output_file_name(self) -> str:
-        """Returns whether name of the file output will be saved in. Only applicable if `output_to_file` is true
+        """Returns whether name of the file output will be saved in. Only applicable if `output_to_file` is true. Default is pyreason_output
 
         :return: str
         """
@@ -63,7 +64,7 @@ class _Settings:
 
     @property
     def graph_attribute_parsing(self) -> bool:
-        """Returns whether graph will be parsed for attributes or not
+        """Returns whether graph will be parsed for attributes or not. Default is True
 
         :return: bool
         """
@@ -71,7 +72,7 @@ class _Settings:
 
     @property
     def abort_on_inconsistency(self) -> bool:
-        """Returns whether program will abort when it encounters an inconsistency in the interpretation or not
+        """Returns whether program will abort when it encounters an inconsistency in the interpretation or not. Default is False
 
         :return: bool
         """
@@ -79,7 +80,7 @@ class _Settings:
 
     @property
     def memory_profile(self) -> bool:
-        """Returns whether program will profile maximum memory usage or not
+        """Returns whether program will profile maximum memory usage or not. Default is False
 
         :return: bool
         """
@@ -88,7 +89,7 @@ class _Settings:
     @property
     def reverse_digraph(self) -> bool:
         """Returns whether graph will be reversed or not.
-        If graph is reversed, an edge a->b will become b->a
+        If graph is reversed, an edge a->b will become b->a. Default is False
 
         :return: bool
         """
@@ -97,7 +98,7 @@ class _Settings:
     @property
     def atom_trace(self) -> bool:
         """Returns whether to keep track of all atoms that are responsible for the firing of rules or not.
-        NOTE: Turning this on may increase memory usage
+        NOTE: Turning this on may increase memory usage. Default is False
 
         :return: bool
         """
@@ -106,7 +107,7 @@ class _Settings:
     @property
     def save_graph_attributes_to_trace(self) -> bool:
         """Returns whether to save the graph attribute facts to the rule trace. Graphs are large and turning this on can result in more memory usage.
-        NOTE: Turning this on may increase memory usage
+        NOTE: Turning this on may increase memory usage. Default is False
 
         :return: bool
         """
@@ -114,7 +115,7 @@ class _Settings:
     
     @property
     def canonical(self) -> bool:
-        """Returns whether the interpretation is canonical or non-canonical
+        """Returns whether the interpretation is canonical or non-canonical. Default is False
 
         :return: bool
         """
@@ -122,7 +123,7 @@ class _Settings:
    
     @property
     def inconsistency_check(self) -> bool:
-        """Returns whether to check for inconsistencies in the interpretation or not
+        """Returns whether to check for inconsistencies in the interpretation or not. Default is True
 
         :return: bool
         """
@@ -130,12 +131,12 @@ class _Settings:
     
     @property
     def static_graph_facts(self) -> bool:
-        """Returns whether to make graph facts static or not
+        """Returns whether to make graph facts static or not. Default is True
 
         :return: bool
         """
         return self.__static_graph_facts
-    
+
     @property
     def ad_hoc_grounding(self) -> bool:
         """Returns whether ground atoms as and when we need them. This can be used for specific cases. Default is off
@@ -143,7 +144,7 @@ class _Settings:
         :return: bool
         """
         return self.__ad_hoc_grounding
-    
+
     @property
     def resolution_levels(self) -> int:
         """Returns the resolution level of the space, how many levels of quadrants there are. Used along side ad-hoc grounding
@@ -151,7 +152,7 @@ class _Settings:
         :return: int
         """
         return self.__resolution_levels
-    
+
     @property
     def step_size(self) -> int:
         """Returns the step size for grounding neighbors. Default is 1 (adjacent neighbors). Used along side ad-hoc grounding
@@ -307,7 +308,7 @@ class _Settings:
             raise TypeError('value has to be a bool')
         else:
             self.__static_graph_facts = value
-   
+
     @ad_hoc_grounding.setter
     def ad_hoc_grounding(self, value: bool) -> None:
         """Whether to ground atoms as and when we need them. This can be used for specific cases. Default is off
@@ -319,7 +320,7 @@ class _Settings:
             raise TypeError('value has to be a bool')
         else:
             self.__ad_hoc_grounding = value
-    
+
     @resolution_levels.setter
     def resolution_levels(self, value: int) -> None:
         """The resolution level of the space, how many levels of quadrants there are. Used along side ad-hoc grounding. Default is 0
@@ -331,7 +332,7 @@ class _Settings:
             raise TypeError('value has to be a int')
         else:
             self.__resolution_levels = value
-    
+
     @step_size.setter
     def step_size(self, value: int) -> None:
         """The step size for grounding neighbors. Default is 1 (adjacent neighbors). Used along side ad-hoc grounding
@@ -361,6 +362,7 @@ __specific_graph_node_labels = None
 __specific_graph_edge_labels = None
 
 __timestamp = ''
+__program = None
 
 __graphml_parser = GraphmlParser()
 settings = _Settings()
@@ -420,12 +422,16 @@ def load_inconsistent_predicate_list(path: str) -> None:
     __ipl = yaml_parser.parse_ipl(path)
 
 
-def reason(timesteps: int=-1, convergence_threshold: int=-1, convergence_bound_threshold: float=-1):
+def reason(timesteps: int=-1, convergence_threshold: int=-1, convergence_bound_threshold: float=-1, again: bool=False, node_facts: List[Type[fact_node.Fact]]=None, edge_facts: List[Type[fact_edge.Fact]]=None, include_graph_facts: bool=True):
     """Function to start the main reasoning process. Graph and rules must already be loaded.
 
     :param timesteps: Max number of timesteps to run. -1 specifies run till convergence, defaults to -1
     :param convergence_threshold: Maximim number of interpretations that have changed between timesteps or fixed point operations until considered convergent. Program will end at convergence. -1 => no changes, perfect convergence, defaults to -1
     :param convergence_bound_threshold: Maximum change in any interpretation (bounds) between timesteps or fixed point operations until considered convergent, defaults to -1
+    :param again: Whether to reason again on an existing interpretation, defaults to False
+    :param node_facts: New node facts to use during the next reasoning process. Other facts from file will be discarded, defaults to None
+    :param edge_facts: New edge facts to use during the next reasoning process. Other facts from file will be discarded, defaults to None
+    :param include_graph_facts: Whether to add the graph facts to the facts supplied through `node_facts`, defaults to True
     :return: The final interpretation after reasoning.
     """
     global settings, __timestamp
@@ -436,21 +442,28 @@ def reason(timesteps: int=-1, convergence_threshold: int=-1, convergence_bound_t
     if settings.output_to_file:
         sys.stdout = open(f"./{settings.output_file_name}_{__timestamp}.txt", "a")
 
-    if settings.memory_profile:
-        start_mem = mp.memory_usage(max_usage=True)
-        mem_usage, interpretation = mp.memory_usage((_reason, [timesteps, convergence_threshold, convergence_bound_threshold]), max_usage=True, retval=True)
-        print(f"\nProgram used {mem_usage-start_mem} MB of memory")
+    if not again or __program is None:
+        if settings.memory_profile:
+            start_mem = mp.memory_usage(max_usage=True)
+            mem_usage, interp = mp.memory_usage((_reason, [timesteps, convergence_threshold, convergence_bound_threshold]), max_usage=True, retval=True)
+            print(f"\nProgram used {mem_usage-start_mem} MB of memory")
+        else:
+            interp = _reason(timesteps, convergence_threshold, convergence_bound_threshold)
     else:
-        interpretation = _reason(timesteps, convergence_threshold, convergence_bound_threshold)
+        if settings.memory_profile:
+            start_mem = mp.memory_usage(max_usage=True)
+            mem_usage, interp = mp.memory_usage((_reason_again, [timesteps, convergence_threshold, convergence_bound_threshold, node_facts, edge_facts, include_graph_facts]), max_usage=True, retval=True)
+            print(f"\nProgram used {mem_usage-start_mem} MB of memory")
+        else:
+            interp = _reason_again(timesteps, convergence_threshold, convergence_bound_threshold, node_facts, edge_facts, include_graph_facts)
 
-    return interpretation
-
+    return interp
 
 
 def _reason(timesteps, convergence_threshold, convergence_bound_threshold):
     # Globals
     global __graph, __rules, __node_facts, __edge_facts, __ipl, __node_labels, __edge_labels, __specific_node_labels, __specific_edge_labels, __graphml_parser
-    global settings, __timestamp
+    global settings, __timestamp, __program
 
     # Assert variables are of correct type
 
@@ -465,19 +478,22 @@ def _reason(timesteps, convergence_threshold, convergence_bound_threshold):
 
     # Check variables that are highly recommended. Warnings
     if __node_labels is None and __edge_labels is None:
-        warnings.warn('Labels yaml file has not been loaded. Use `load_labels`. Only graph attributes will be used as labels\n')
+        if settings.verbose:
+            warnings.warn('Labels yaml file has not been loaded. Use `load_labels`. Only graph attributes will be used as labels\n')
         __node_labels = numba.typed.List.empty_list(label.label_type)
         __edge_labels = numba.typed.List.empty_list(label.label_type)
         __specific_node_labels = numba.typed.Dict.empty(key_type=label.label_type, value_type=numba.types.ListType(numba.types.string))
         __specific_edge_labels = numba.typed.Dict.empty(key_type=label.label_type, value_type=numba.types.ListType(numba.types.Tuple((numba.types.string, numba.types.string))))
 
     if __node_facts is None and __edge_facts is None:
-        warnings.warn('Facts yaml file has not been loaded. Use `load_facts`. Only graph attributes will be used as facts\n')
+        if settings.verbose:
+            warnings.warn('Facts yaml file has not been loaded. Use `load_facts`. Only graph attributes will be used as facts\n')
         __node_facts = numba.typed.List.empty_list(fact_node.fact_type)
         __edge_facts = numba.typed.List.empty_list(fact_edge.fact_type)
 
     if __ipl is None:
-        warnings.warn('Inconsistent Predicate List yaml file has not been loaded. Use `load_ipl`. Loading IPL is optional\n')
+        if settings.verbose:
+            warnings.warn('Inconsistent Predicate List yaml file has not been loaded. Use `load_ipl`. Loading IPL is optional\n')
         __ipl = numba.typed.List.empty_list(numba.types.Tuple((label.label_type, label.label_type)))
 
     
@@ -497,14 +513,44 @@ def _reason(timesteps, convergence_threshold, convergence_bound_threshold):
     __edge_facts.extend(__non_fluent_graph_facts_edge)   
 
     # Setup logical program
-    program = Program(__graph, timesteps, __node_facts, __edge_facts, __rules, __ipl, settings.reverse_digraph, settings.atom_trace, settings.save_graph_attributes_to_trace, settings.canonical, settings.inconsistency_check, settings.ad_hoc_grounding, settings.resolution_levels, settings.step_size)
-    program.available_labels_node = __node_labels
-    program.available_labels_edge = __edge_labels
-    program.specific_node_labels = __specific_node_labels
-    program.specific_edge_labels = __specific_edge_labels
+    __program = Program(__graph, __node_facts, __edge_facts, __rules, __ipl, settings.reverse_digraph, settings.atom_trace, settings.save_graph_attributes_to_trace, settings.canonical, settings.inconsistency_check, settings.ad_hoc_grounding, settings.resolution_levels, settings.step_size)
+    __program.available_labels_node = __node_labels
+    __program.available_labels_edge = __edge_labels
+    __program.specific_node_labels = __specific_node_labels
+    __program.specific_edge_labels = __specific_edge_labels
 
     # Run Program and get final interpretation
-    interpretation = program.reason(convergence_threshold, convergence_bound_threshold, settings.verbose)
+    interpretation = __program.reason(timesteps, convergence_threshold, convergence_bound_threshold, settings.verbose)
+
+    return interpretation
+
+
+def _reason_again(timesteps, convergence_threshold, convergence_bound_threshold, node_facts, edge_facts, include_graph_facts):
+    # Globals
+    global __graph, __rules, __node_facts, __edge_facts, __ipl, __node_labels, __edge_labels, __specific_node_labels, __specific_edge_labels, __graphml_parser
+    global settings, __timestamp, __program
+
+    assert __program is not None, 'To run `reason_again` you need to have reasoned once before'
+
+    # If facts have not been inputted, use the old facts
+    __program.interp.facts_to_be_applied_node.clear()
+    __program.interp.facts_to_be_applied_edge.clear()
+    if node_facts is not None:
+        node_facts = numba.typed.List(node_facts)
+        if include_graph_facts:
+            node_facts.extend(__non_fluent_graph_facts_node)
+    else:
+        node_facts = numba.typed.List.empty_list(fact_node.fact_type)
+
+    if edge_facts is not None:
+        edge_facts = numba.typed.List(edge_facts)
+        if include_graph_facts:
+            edge_facts.extend(__non_fluent_graph_facts_edge)
+    else:
+        edge_facts = numba.typed.List.empty_list(fact_edge.fact_type)
+
+    # Run Program and get final interpretation
+    interpretation = __program.reason_again(timesteps, convergence_threshold, convergence_bound_threshold, node_facts, edge_facts, settings.verbose)
 
     return interpretation
 
